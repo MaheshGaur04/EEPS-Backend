@@ -2,6 +2,7 @@ from django.conf import settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .models import AdminMessage, User, UserRole
@@ -54,6 +55,8 @@ class HealthView(APIView):
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register'
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -84,15 +87,17 @@ class RegisterView(APIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
-            msg = str(first_error_message(serializer.errors))
-            if 'No account found' in msg:
-                return Response({'error': msg}, status=status.HTTP_404_NOT_FOUND)
-            if 'Invalid email/mobile' in msg or 'inactive' in msg.lower():
-                return Response({'error': msg}, status=status.HTTP_401_UNAUTHORIZED)
+            if 'non_field_errors' in serializer.errors:
+                return Response(
+                    {'error': 'Invalid email/mobile or password'},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
             return Response({'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         user = serializer.validated_data['user']
@@ -115,6 +120,8 @@ class LoginView(APIView):
 
 class RefreshView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'refresh'
 
     def post(self, request):
         raw = request.COOKIES.get(settings.REFRESH_COOKIE_NAME)

@@ -1,7 +1,12 @@
+from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from rest_framework import serializers
 
 from .models import AdminMessage, User, UserRole
+
+_DUMMY_PASSWORD_HASH = make_password('dummy-password-for-login-timing')
 
 
 class AdminMessageSerializer(serializers.ModelSerializer):
@@ -57,7 +62,7 @@ class RegisterSerializer(serializers.Serializer):
         regex=r'^\d{10}$',
         error_messages={'invalid': 'Mobile number must be exactly 10 digits'},
     )
-    password = serializers.CharField(min_length=6, write_only=True)
+    password = serializers.CharField(min_length=12, write_only=True)
     location = serializers.CharField(min_length=2, max_length=255)
 
     def validate(self, attrs):
@@ -66,6 +71,16 @@ class RegisterSerializer(serializers.Serializer):
         if User.objects.filter(Q(email__iexact=email) | Q(mobile=mobile)).exists():
             raise serializers.ValidationError('User with this email or mobile already exists')
         attrs['email'] = email
+        password_user = User(
+            full_name=attrs['fullName'],
+            email=email,
+            mobile=mobile,
+            location=attrs['location'],
+        )
+        try:
+            validate_password(attrs['password'], user=password_user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'password': exc.messages}) from exc
         return attrs
 
     def create(self, validated_data):
@@ -93,15 +108,11 @@ class LoginSerializer(serializers.Serializer):
         ).first()
 
         if not user:
-            raise serializers.ValidationError(
-                'No account found. Please register or check your email/mobile.'
-            )
-
-        if not user.check_password(password):
+            check_password(password, _DUMMY_PASSWORD_HASH)
             raise serializers.ValidationError('Invalid email/mobile or password')
 
-        if not user.is_active:
-            raise serializers.ValidationError('Account is inactive')
+        if not user.check_password(password) or not user.is_active:
+            raise serializers.ValidationError('Invalid email/mobile or password')
 
         attrs['user'] = user
         return attrs

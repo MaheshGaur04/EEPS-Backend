@@ -199,11 +199,6 @@ class AdminServiceRequestListView(APIView):
             'pages': pages,
         })
 
-    def delete(self, request):
-        ServiceRequest.objects.all().delete()
-        return Response({'message': 'All service requests deleted'})
-
-
 class AdminServiceRequestDetailView(APIView):
     permission_classes = [IsAuthenticated, IsSuperAdmin]
 

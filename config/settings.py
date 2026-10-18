@@ -3,15 +3,42 @@
 from pathlib import Path
 import os
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-only-change-me')
-DEBUG = os.getenv('DEBUG', 'True').lower() in ('1', 'true', 'yes')
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('1', 'true', 'yes')
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
+
+
+def _production_secret(name):
+    value = os.getenv(name, '').strip()
+    if len(value) < 32 or value.lower().startswith(('change-me', 'django-insecure-', 'your_')):
+        raise ImproperlyConfigured(
+            f'{name} must be set to a unique, randomly generated secret of at least 32 characters when DEBUG is False.'
+        )
+    return value
+
+
+if DEBUG:
+    SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-only-change-me')
+    ACCESS_TOKEN_SECRET = os.getenv('ACCESS_TOKEN_SECRET', SECRET_KEY)
+    REFRESH_TOKEN_SECRET = os.getenv('REFRESH_TOKEN_SECRET', SECRET_KEY)
+else:
+    SECRET_KEY = _production_secret('SECRET_KEY')
+    ACCESS_TOKEN_SECRET = _production_secret('ACCESS_TOKEN_SECRET')
+    REFRESH_TOKEN_SECRET = _production_secret('REFRESH_TOKEN_SECRET')
+    if len({SECRET_KEY, ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET}) != 3:
+        raise ImproperlyConfigured(
+            'SECRET_KEY, ACCESS_TOKEN_SECRET, and REFRESH_TOKEN_SECRET must be different values.'
+        )
+    if not os.getenv('ALLOWED_HOSTS', '').strip() or not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS:
+        raise ImproperlyConfigured(
+            'Set ALLOWED_HOSTS to the explicit production hostnames when DEBUG is False.'
+        )
 
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
@@ -87,7 +114,7 @@ AUTH_USER_MODEL = 'accounts.User'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 6}},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 12}},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
@@ -96,6 +123,42 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Asia/Kolkata'
 USE_I18N = True
 USE_TZ = True
+
+REDIS_URL = os.getenv('REDIS_URL', '').strip()
+CACHE_KEY_PREFIX = os.getenv('CACHE_KEY_PREFIX', 'earth-energy').strip()
+
+if not DEBUG and not REDIS_URL:
+    raise ImproperlyConfigured(
+        'REDIS_URL must point to a shared Redis service when DEBUG is False.'
+    )
+
+if REDIS_URL and not REDIS_URL.startswith(('redis://', 'rediss://', 'unix://')):
+    raise ImproperlyConfigured('REDIS_URL must use redis://, rediss://, or unix://.')
+
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'KEY_PREFIX': CACHE_KEY_PREFIX,
+            'TIMEOUT': 300,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'CONNECTION_POOL_KWARGS': {
+                    'health_check_interval': 30,
+                    'socket_connect_timeout': 2,
+                    'socket_timeout': 2,
+                },
+            },
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'earth-energy-local',
+        }
+    }
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -113,11 +176,17 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'EXCEPTION_HANDLER': 'accounts.exceptions.custom_exception_handler',
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '10/minute',
+        'register': '5/hour',
+        'refresh': '30/minute',
+        'contact': '5/hour',
+        'roi_calculate': '2/day',
+    },
+    'NUM_PROXIES': int(os.getenv('NUM_PROXIES', '0' if DEBUG else '1')),
 }
 
 # Dual JWT secrets (access Bearer header + refresh httpOnly cookie)
-ACCESS_TOKEN_SECRET = os.getenv('ACCESS_TOKEN_SECRET', SECRET_KEY)
-REFRESH_TOKEN_SECRET = os.getenv('REFRESH_TOKEN_SECRET', SECRET_KEY)
 ACCESS_TOKEN_LIFETIME_MINUTES = int(os.getenv('ACCESS_TOKEN_LIFETIME_MINUTES', '15'))
 REFRESH_TOKEN_LIFETIME_DAYS = int(os.getenv('REFRESH_TOKEN_LIFETIME_DAYS', '7'))
 
@@ -127,6 +196,15 @@ REFRESH_COOKIE_SAMESITE = 'Strict'
 REFRESH_COOKIE_HTTPONLY = True
 REFRESH_COOKIE_PATH = '/'
 REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_LIFETIME_DAYS * 24 * 60 * 60
+
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False').lower() in ('1', 'true', 'yes')
+SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv(
+    'SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False'
+).lower() in ('1', 'true', 'yes')
+SECURE_HSTS_PRELOAD = os.getenv('SECURE_HSTS_PRELOAD', 'False').lower() in ('1', 'true', 'yes')
 
 # Gemini for ROI (falls back to heuristic if unset / unreachable)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')

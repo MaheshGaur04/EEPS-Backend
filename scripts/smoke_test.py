@@ -45,7 +45,7 @@ def main():
         'fullName': 'Test Customer',
         'email': 'customer.smoke@example.com',
         'mobile': '9887766554',
-        'password': 'Test@12345',
+        'password': 'Test@12345Strong!',
         'location': 'Hamirpur, Uttar Pradesh',
         'role': 'CUSTOMER',
     })
@@ -53,7 +53,7 @@ def main():
 
     code, data = req('POST', '/auth/login', {
         'identifier': 'customer.smoke@example.com',
-        'password': 'Test@12345',
+        'password': 'Test@12345Strong!',
     })
     results.append(('customer_login', code, data.get('user', {}).get('role') if code == 200 else data))
     cust_token = data.get('accessToken') if code == 200 else None

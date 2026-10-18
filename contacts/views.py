@@ -1,6 +1,7 @@
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.models import AdminMessage, User, UserRole
@@ -13,6 +14,8 @@ from .serializers import ContactCreateSerializer, ContactSerializer
 
 class ContactSubmitView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'contact'
 
     def post(self, request):
         serializer = ContactCreateSerializer(data=request.data)

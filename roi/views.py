@@ -7,6 +7,7 @@ from django.conf import settings
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.permissions import IsSuperAdmin
@@ -149,6 +150,8 @@ def call_gemini_narrative(payload: dict, numbers: dict) -> dict | None:
 
 class CalculateRoiView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'roi_calculate'
 
     def post(self, request):
         serializer = RoiInputSerializer(data=request.data)
