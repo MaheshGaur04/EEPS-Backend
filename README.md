@@ -12,6 +12,12 @@ python manage.py runserver 5000
 
 API: http://localhost:5000/api/health
 
+For a Render web service, install from `requirements.txt` and start the app with:
+
+```bash
+python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+```
+
 The seed command creates `admin@earthenergy.local` unless `--email` is supplied.
 It requires an explicit password and does not install a default admin credential.
 API registration requires a password of at least 12 characters and applies the
