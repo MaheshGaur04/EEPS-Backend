@@ -117,15 +117,9 @@ def reverse_geocode(lat: float, lon: float) -> dict | None:
         'lat': lat,
         'lon': lon,
         'format': 'json',
-        'zoom': 12,
+        'zoom': 16,
         'addressdetails': 1,
     })
-    fallback = {
-        'name': f'{lat:.4f}, {lon:.4f}',
-        'latitude': lat,
-        'longitude': lon,
-        'timezone': 'Asia/Kolkata',
-    }
     try:
         req = urllib.request.Request(
             f'{NOMINATIM_REVERSE_URL}?{params}',
@@ -135,7 +129,7 @@ def reverse_geocode(lat: float, lon: float) -> dict | None:
             data = json.loads(resp.read().decode('utf-8'))
     except Exception as exc:
         print(f'Nominatim reverse failed: {exc}')
-        return fallback
+        return None
 
     address = data.get('address') or {}
     city = (
@@ -149,7 +143,9 @@ def reverse_geocode(lat: float, lon: float) -> dict | None:
     state = address.get('state')
     country = address.get('country')
     parts = [city, state, country]
-    name = ', '.join([p for p in parts if p]) or data.get('display_name') or fallback['name']
+    name = ', '.join([p for p in parts if p]) or data.get('display_name')
+    if not name:
+        return None
     return {
         'name': name,
         'latitude': lat,
