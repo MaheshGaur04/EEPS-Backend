@@ -2,10 +2,7 @@
 
 from pathlib import Path
 import os
-from urllib.parse import urlparse
 
-import dj_database_url
-from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,48 +10,10 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-only-change-me')
-DEBUG = os.getenv('DEBUG', 'False').lower() in ('1', 'true', 'yes')
+DEBUG = os.getenv('DEBUG', 'True').lower() in ('1', 'true', 'yes')
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
 
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
-CORS_ALLOWED_ORIGINS = [
-    origin.strip().rstrip('/')
-    for origin in os.getenv('CORS_ALLOWED_ORIGINS', FRONTEND_URL).split(',')
-    if origin.strip()
-]
-
-ACCESS_TOKEN_SECRET = os.getenv('ACCESS_TOKEN_SECRET', SECRET_KEY)
-REFRESH_TOKEN_SECRET = os.getenv('REFRESH_TOKEN_SECRET', SECRET_KEY)
-USE_SQLITE = os.getenv('USE_SQLITE', 'False').lower() in ('1', 'true', 'yes')
-
-if not DEBUG:
-    production_secrets = {
-        'SECRET_KEY': SECRET_KEY,
-        'ACCESS_TOKEN_SECRET': ACCESS_TOKEN_SECRET,
-        'REFRESH_TOKEN_SECRET': REFRESH_TOKEN_SECRET,
-    }
-    for name, value in production_secrets.items():
-        if value.startswith('django-insecure-') or len(value) < 50 or len(set(value)) < 5:
-            raise ImproperlyConfigured(f'{name} must be a strong, unique production secret.')
-    if len(set(production_secrets.values())) != len(production_secrets):
-        raise ImproperlyConfigured('SECRET_KEY, ACCESS_TOKEN_SECRET, and REFRESH_TOKEN_SECRET must differ.')
-    if not ALLOWED_HOSTS:
-        raise ImproperlyConfigured('ALLOWED_HOSTS must be set for production.')
-    frontend_origin = urlparse(FRONTEND_URL)
-    if (
-        frontend_origin.scheme != 'https'
-        or not frontend_origin.netloc
-        or frontend_origin.path not in ('', '/')
-        or frontend_origin.query
-        or frontend_origin.fragment
-    ):
-        raise ImproperlyConfigured('FRONTEND_URL must be an HTTPS origin in production.')
-    if USE_SQLITE:
-        raise ImproperlyConfigured('SQLite is not supported for production deployments.')
-    if not os.getenv('DATABASE_URL') and not all(
-        os.getenv(name) for name in ('DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST')
-    ):
-        raise ImproperlyConfigured('Set DATABASE_URL or all required DB_* variables for production.')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -74,7 +33,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -104,20 +62,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+USE_SQLITE = os.getenv('USE_SQLITE', 'False').lower() in ('1', 'true', 'yes')
+
 if USE_SQLITE:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
         }
-    }
-elif os.getenv('DATABASE_URL'):
-    DATABASES = {
-        'default': dj_database_url.parse(
-            os.environ['DATABASE_URL'],
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
     }
 else:
     DATABASES = {
@@ -147,18 +99,11 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STORAGES = {
-    'default': {
-        'BACKEND': 'django.core.files.storage.FileSystemStorage',
-    },
-    'staticfiles': {
-        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
-    },
-}
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+CSRF_TRUSTED_ORIGINS = [FRONTEND_URL]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -171,21 +116,17 @@ REST_FRAMEWORK = {
 }
 
 # Dual JWT secrets (access Bearer header + refresh httpOnly cookie)
+ACCESS_TOKEN_SECRET = os.getenv('ACCESS_TOKEN_SECRET', SECRET_KEY)
+REFRESH_TOKEN_SECRET = os.getenv('REFRESH_TOKEN_SECRET', SECRET_KEY)
 ACCESS_TOKEN_LIFETIME_MINUTES = int(os.getenv('ACCESS_TOKEN_LIFETIME_MINUTES', '15'))
 REFRESH_TOKEN_LIFETIME_DAYS = int(os.getenv('REFRESH_TOKEN_LIFETIME_DAYS', '7'))
 
 REFRESH_COOKIE_NAME = 'jwt'
 REFRESH_COOKIE_SECURE = not DEBUG
-REFRESH_COOKIE_SAMESITE = os.getenv('REFRESH_COOKIE_SAMESITE', 'Strict')
+REFRESH_COOKIE_SAMESITE = 'Strict'
 REFRESH_COOKIE_HTTPONLY = True
 REFRESH_COOKIE_PATH = '/'
 REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_LIFETIME_DAYS * 24 * 60 * 60
-
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = not DEBUG
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000' if not DEBUG else '0'))
 
 # Gemini for ROI (falls back to heuristic if unset / unreachable)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
