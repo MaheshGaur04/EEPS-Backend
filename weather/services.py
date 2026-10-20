@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import urllib.error
 import urllib.parse
 import urllib.request
 
+from django.core.cache import cache
+
 GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
 # Open-Meteo reverse is unreliable; Nominatim is used for lat/lon → place name
 NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse'
+WEATHER_CACHE_TIMEOUT = 300
 
 # WMO weather interpretation codes → short label
 WEATHER_CODES = {
@@ -267,16 +271,29 @@ def build_weather_payload(place: dict, raw: dict) -> dict:
 
 
 def get_weather_for_query(*, location: str | None = None, lat: float | None = None, lon: float | None = None) -> dict:
+    if lat is not None and lon is not None:
+        cache_identity = f'coordinates:{lat:.5f}:{lon:.5f}'
+    elif location and location.strip():
+        cache_identity = f'location:{location.strip().casefold()}'
+    else:
+        raise ValueError('Provide location or lat/lon')
+
+    cache_digest = hashlib.sha256(cache_identity.encode('utf-8')).hexdigest()
+    cache_key = f'weather:forecast:v1:{cache_digest}'
+    cached_weather = cache.get(cache_key)
+    if cached_weather is not None:
+        return cached_weather
+
     place = None
     if lat is not None and lon is not None:
         place = reverse_geocode(float(lat), float(lon))
     elif location and location.strip():
         place = geocode_location(location.strip())
-    else:
-        raise ValueError('Provide location or lat/lon')
 
     if not place:
         raise LookupError('Location not found')
 
     raw = fetch_forecast(place['latitude'], place['longitude'], place.get('timezone') or 'auto')
-    return build_weather_payload(place, raw)
+    weather = build_weather_payload(place, raw)
+    cache.set(cache_key, weather, WEATHER_CACHE_TIMEOUT)
+    return weather

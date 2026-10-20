@@ -42,6 +42,11 @@ Production startup fails if these secrets are missing, too short, placeholder
 values, or reused. Session, CSRF, and refresh-token cookies are marked secure
 when `DEBUG=False`.
 
+PostgreSQL connections are reused for up to 60 seconds by default. Set
+`DB_CONN_MAX_AGE=0` to disable reuse, or choose a duration appropriate for the
+database connection limit and the total number of application workers and
+instances. Connection health checks run before a reused connection is used.
+
 ### Shared cache and API throttling
 
 Production requires a shared Redis cache so API throttling works consistently
